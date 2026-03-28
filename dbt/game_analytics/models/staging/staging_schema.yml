@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: stg_rawg_games
+    description: One row per RAWG game from the latest raw payload.
+    columns:
+      - name: rawg_game_id
+        tests: [not_null]
+      - name: game_name
+        tests: [not_null]
+
+  - name: stg_rawg_game_platforms
+    description: One row per RAWG game-platform combination.
+    columns:
+      - name: rawg_game_id
+        tests: [not_null]
+      - name: platform_name
+        tests: [not_null]
+
+  - name: stg_rawg_game_genres
+    description: One row per RAWG game-genre combination.
+    columns:
+      - name: rawg_game_id
+        tests: [not_null]
+      - name: genre_name
+        tests: [not_null]
+
+  - name: stg_steam_featured_games
+    description: One row per item returned by the Steam featured categories payload.
+    columns:
+      - name: category_name
+        tests: [not_null]

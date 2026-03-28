@@ -1,26 +1,68 @@
 from __future__ import annotations
 
-"""
-Starter Airflow DAG for the portfolio project.
+from datetime import datetime, timedelta
 
-This file is a scaffold only. It documents the intended orchestration flow:
-1. Extract RAWG data
-2. Extract Steam data
-3. Upload raw data to S3
-4. Load raw data into Snowflake
-5. Run dbt models
-"""
-
-from datetime import datetime
+from airflow import DAG
+from airflow.operators.bash import BashOperator
 
 
-DAG_ID = "game_market_analytics"
-START_DATE = datetime(2026, 3, 28)
+PROJECT_ROOT = "/opt/airflow/project"
+DBT_PROJECT_DIR = f"{PROJECT_ROOT}/dbt/game_analytics"
+DBT_PROFILES_DIR = "/opt/airflow/dbt_profiles"
+
+default_args = {
+    "owner": "angelina340",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
 
 
-def dag_summary() -> dict[str, str]:
-    return {
-        "dag_id": DAG_ID,
-        "description": "Scaffold for orchestrating RAWG + Steam ingestion into S3, Snowflake, and dbt.",
-        "start_date": START_DATE.isoformat(),
-    }
+with DAG(
+    dag_id="game_market_analytics",
+    description="End-to-end pipeline for RAWG and Steam data into S3, Snowflake, and dbt marts.",
+    default_args=default_args,
+    start_date=datetime(2026, 3, 28),
+    schedule="0 9 * * *",
+    catchup=False,
+    tags=["portfolio", "data-engineering", "snowflake", "dbt"],
+) as dag:
+    ingest_and_load_raw = BashOperator(
+        task_id="ingest_and_load_raw",
+        bash_command="python scripts/load_to_snowflake.py",
+        cwd=PROJECT_ROOT,
+        append_env=True,
+        env={
+            "PYTHONPATH": PROJECT_ROOT,
+        },
+    )
+
+    dbt_run = BashOperator(
+        task_id="dbt_run",
+        bash_command=(
+            f"dbt run --project-dir {DBT_PROJECT_DIR} "
+            f"--profiles-dir {DBT_PROFILES_DIR}"
+        ),
+        cwd=PROJECT_ROOT,
+        append_env=True,
+        env={
+            "PYTHONPATH": PROJECT_ROOT,
+        },
+    )
+
+    dbt_test = BashOperator(
+        task_id="dbt_test",
+        bash_command=(
+            f"dbt test --project-dir {DBT_PROJECT_DIR} "
+            f"--profiles-dir {DBT_PROFILES_DIR}"
+        ),
+        cwd=PROJECT_ROOT,
+        append_env=True,
+        env={
+            "PYTHONPATH": PROJECT_ROOT,
+        },
+    )
+
+    ingest_and_load_raw >> dbt_run >> dbt_test

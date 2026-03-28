@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -64,5 +63,6 @@ def run_pipeline(settings: Settings) -> dict[str, str]:
         "steam_local_path": str(steam_local_path),
         "rawg_s3_key": rawg_s3_key,
         "steam_s3_key": steam_s3_key,
-        "settings": str(asdict(settings)),
+        "aws_region": settings.aws_default_region,
+        "s3_bucket_name": settings.s3_bucket_name,
     }

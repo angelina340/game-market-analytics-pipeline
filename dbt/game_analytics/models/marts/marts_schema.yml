@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: mart_games
+    description: Curated game-level model that combines RAWG metadata with matching Steam featured data when names align.
+    columns:
+      - name: rawg_game_id
+        tests: [not_null, unique]
+      - name: game_name
+        tests: [not_null]
+
+  - name: mart_platform_coverage
+    description: Aggregated view of how many games appear on each RAWG platform.
+    columns:
+      - name: platform_name
+        tests: [not_null, unique]
+
+  - name: mart_top_rated_games
+    description: Top-rated games based on RAWG ratings, enriched with Steam pricing when available.
+    columns:
+      - name: rawg_game_id
+        tests: [not_null, unique]

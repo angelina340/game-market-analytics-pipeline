@@ -1,0 +1,3 @@
+-- Replace YOUR_PUBLIC_KEY_BODY with the public key content without the BEGIN/END lines.
+-- Example:
+-- ALTER USER YOUR_SNOWFLAKE_USER SET RSA_PUBLIC_KEY='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...';

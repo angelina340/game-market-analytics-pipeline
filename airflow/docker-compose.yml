@@ -1,0 +1,101 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  airflow-init:
+    build:
+      context: ..
+      dockerfile: airflow/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW_HOME: /opt/airflow
+    volumes:
+      - ../:/opt/airflow/project
+      - ../dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./dbt_profiles:/opt/airflow/dbt_profiles
+    working_dir: /opt/airflow/project
+    command: >
+      bash -c "airflow db migrate &&
+               airflow users create
+               --username admin
+               --firstname Angelina
+               --lastname Liang
+               --role Admin
+               --email admin@example.com
+               --password admin || true"
+
+  airflow-webserver:
+    build:
+      context: ..
+      dockerfile: airflow/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - ../.env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__WEBSERVER__SECRET_KEY: local-airflow-secret
+      AIRFLOW_HOME: /opt/airflow
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../:/opt/airflow/project
+      - ../dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./dbt_profiles:/opt/airflow/dbt_profiles
+    working_dir: /opt/airflow/project
+    command: webserver
+    restart: unless-stopped
+
+  airflow-scheduler:
+    build:
+      context: ..
+      dockerfile: airflow/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - ../.env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW_HOME: /opt/airflow
+    volumes:
+      - ../:/opt/airflow/project
+      - ../dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./dbt_profiles:/opt/airflow/dbt_profiles
+    working_dir: /opt/airflow/project
+    command: scheduler
+    restart: unless-stopped
+
+volumes:
+  postgres-db-volume:

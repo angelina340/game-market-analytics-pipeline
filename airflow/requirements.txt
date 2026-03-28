@@ -1,0 +1,2 @@
+--requirement /requirements-project.txt
+dbt-snowflake==1.9.4

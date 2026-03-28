@@ -23,6 +23,21 @@ class Settings:
     steam_limit: int = 200
 
 
+@dataclass(frozen=True)
+class SnowflakeSettings:
+    account: str
+    user: str
+    password: str | None
+    warehouse: str
+    database: str
+    schema: str
+    role: str
+    authenticator: str = "username_password_mfa"
+    mfa_passcode: str | None = None
+    private_key_path: str | None = None
+    private_key_passphrase: str | None = None
+
+
 def _require_env(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
@@ -52,4 +67,21 @@ def get_settings() -> Settings:
             or os.getenv("AWS_RAW_PREFIX", "").strip()
             or "raw"
         ),
+    )
+
+
+def get_snowflake_settings() -> SnowflakeSettings:
+    return SnowflakeSettings(
+        account=_require_env("SNOWFLAKE_ACCOUNT"),
+        user=_require_env("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD", "").strip() or None,
+        warehouse=_require_env("SNOWFLAKE_WAREHOUSE"),
+        database=os.getenv("SNOWFLAKE_DATABASE", "GAME_ANALYTICS").strip() or "GAME_ANALYTICS",
+        schema=os.getenv("SNOWFLAKE_SCHEMA", "RAW").strip() or "RAW",
+        role=_require_env("SNOWFLAKE_ROLE"),
+        authenticator=os.getenv("SNOWFLAKE_AUTHENTICATOR", "username_password_mfa").strip()
+        or "username_password_mfa",
+        mfa_passcode=os.getenv("SNOWFLAKE_MFA_PASSCODE", "").strip() or None,
+        private_key_path=os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH", "").strip() or None,
+        private_key_passphrase=os.getenv("SNOWFLAKE_PRIVATE_KEY_PASSPHRASE", "").strip() or None,
     )

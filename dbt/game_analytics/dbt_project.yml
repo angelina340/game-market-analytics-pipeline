@@ -19,5 +19,7 @@ models:
   game_analytics:
     staging:
       +materialized: view
+      +schema: staging
     marts:
       +materialized: table
+      +schema: mart

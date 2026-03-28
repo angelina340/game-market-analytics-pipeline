@@ -1,0 +1,11 @@
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'GAME_ANALYTICS') }}"
+    schema: RAW
+    tables:
+      - name: RAWG_GAMES_RAW
+        description: Raw JSON envelopes loaded from the RAWG API into Snowflake.
+      - name: STEAM_GAMES_RAW
+        description: Raw JSON envelopes loaded from Steam into Snowflake.
