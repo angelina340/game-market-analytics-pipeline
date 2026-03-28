@@ -1,138 +1,114 @@
 # Game Market Analytics Pipeline
 
-This is a portfolio-ready data engineering project that ingests video game data from the RAWG API and Steam API, lands raw data in AWS S3, loads it into Snowflake, transforms it with dbt, and orchestrates the workflow with Airflow.
+End-to-end batch data engineering project that ingests video game data from RAWG and Steam, stores raw JSON in AWS S3, loads it into Snowflake, transforms it with dbt, and orchestrates the full workflow with Airflow.
 
-## Resume-friendly project story
+## Project Overview
 
-Built an end-to-end batch data pipeline for game market analytics using Python, AWS S3, Snowflake, Airflow, and dbt. The pipeline ingests external API data, stores raw JSON in a cloud data lake, models analytics-ready tables in Snowflake, and supports reporting on game popularity, ratings, release trends, and platform coverage.
+This project answers a simple analytics question:
 
-## Project idea
+`Which games are highly rated, actively featured, and broadly available across platforms, and how does that data move through a modern analytics stack?`
 
-The core idea is:
+It is designed as a portfolio project that demonstrates:
 
-`Which games are trending, highly rated, and broadly available across platforms, and how does the catalog change over time?`
-
-This gives you a strong business-style analytics use case and lets you show common data engineering patterns:
-
-- API ingestion
-- raw to staged to mart layers
-- cloud object storage
-- warehouse loading
-- transformation and testing
-- workflow orchestration
+- API ingestion with Python
+- cloud raw storage in S3
+- warehouse loading into Snowflake
+- SQL-based transformation with dbt
+- orchestration with Airflow
+- automated testing of analytics models
 
 ## Architecture
 
 ```text
-RAWG API ----\
-              > Python ingestion --> S3 raw zone --> Snowflake raw tables --> dbt staging/marts --> analytics
-Steam API ---/                                 \
-                                                -> Airflow orchestration and scheduling
+RAWG API ---------\
+                   > Python ingestion -> S3 raw zone -> Snowflake raw tables -> dbt staging -> dbt marts
+Steam API --------/                                      |
+                                                         -> Airflow orchestrates ingestion, load, run, and test
 ```
 
-## Suggested analytics outputs
+## Tech Stack
 
-- Top rated games by platform and genre
-- New releases by month
-- Steam catalog growth over time
-- Games with strong ratings and high review counts
-- Cross-platform coverage analysis
+- Python
+- AWS S3
+- Snowflake
+- dbt
+- Apache Airflow
+- Docker Compose
+- PostgreSQL for Airflow metadata
 
-## Repo structure
+## End-to-End Workflow
 
-```text
-docs/
-  github_guide.md
-  project_brief.md
-dags/
-  game_analytics_dag.py
-dbt/
-  game_analytics/
-    dbt_project.yml
-    models/
-      staging/
-      marts/
-scripts/
-  run_pipeline.py
-snowflake/
-  ddl/
-    001_create_schemas.sql
-src/
-  clients/
-    rawg_client.py
-    steam_client.py
-  config.py
-  pipeline.py
-  s3_writer.py
-```
+1. Python calls the RAWG API and Steam API.
+2. Each response is wrapped in a raw ingestion envelope with extraction metadata.
+3. Raw JSON files are written locally for debugging and uploaded to S3.
+4. Snowflake loads the latest S3 raw files into `VARIANT` raw tables.
+5. dbt builds staging models that flatten and standardize the JSON payloads.
+6. dbt builds marts for analytics-ready game-level reporting.
+7. Airflow orchestrates the pipeline: raw ingestion, Snowflake load, `dbt run`, and `dbt test`.
 
-## Current pipeline status
+## Data Layers
 
-Already implemented:
+### Raw
 
-- RAWG extraction with API key auth
-- Steam extraction with the public Steam Web API app list endpoint
-- Local raw JSON snapshots
-- Upload of raw JSON files to S3
+Raw API payloads are stored in S3 and loaded into Snowflake as JSON `VARIANT` columns.
 
-Next pieces to build:
+Snowflake raw tables:
 
-- Airflow DAG orchestration
-- tests and documentation for GitHub
+- `RAWG_GAMES_RAW`
+- `STEAM_GAMES_RAW`
 
-## dbt models
+### Staging
 
-The project now includes dbt source, staging, and mart models for Snowflake:
+The staging layer normalizes the raw JSON into relational models:
 
-- RAWG staging models for games, platforms, and genres
-- Steam staging model for featured store items
-- marts for unified game analytics, platform coverage, and top-rated games
+- `stg_rawg_games`
+  One row per RAWG game with core metadata such as rating, reviews, metacritic, release date, and extract timestamp.
+- `stg_rawg_game_platforms`
+  One row per RAWG game-platform combination.
+- `stg_rawg_game_genres`
+  One row per RAWG game-genre combination.
+- `stg_steam_featured_games`
+  One row per Steam featured/store item with pricing, discount, availability, and category attributes.
 
-Key files:
+These models are built from the latest raw snapshot to avoid duplicate game rows across historical ingestions.
 
-- [sources.yml](E:/Codex/DE_project/dbt/game_analytics/models/sources.yml)
-- [stg_rawg_games.sql](E:/Codex/DE_project/dbt/game_analytics/models/staging/stg_rawg_games.sql)
-- [stg_steam_featured_games.sql](E:/Codex/DE_project/dbt/game_analytics/models/staging/stg_steam_featured_games.sql)
-- [mart_games.sql](E:/Codex/DE_project/dbt/game_analytics/models/marts/mart_games.sql)
-- [profiles.yml.example](E:/Codex/DE_project/dbt/game_analytics/profiles.yml.example)
+### Marts
 
-To run dbt later:
+The mart layer provides analytics-ready outputs:
 
-1. Install dbt for Snowflake in your virtual environment.
-2. Copy `dbt/game_analytics/profiles.yml.example` to your dbt profiles location.
-3. Run `dbt debug`, `dbt run`, and `dbt test` from `dbt/game_analytics`.
+- `mart_games`
+  Curated game-level model combining RAWG metadata with matching Steam featured data when names align.
+- `mart_platform_coverage`
+  Aggregated platform-level coverage across RAWG games.
+- `mart_top_rated_games`
+  Top-rated games ranked by RAWG ratings and enriched with Steam pricing and discount fields when available.
 
-With the current config, staging models will land in a Snowflake schema like `RAW_STAGING` and marts in `RAW_MART`.
+## Airflow DAG
 
-## Airflow orchestration
+The Airflow DAG is defined in [game_analytics_dag.py](E:/Codex/DE_project/dags/game_analytics_dag.py) and runs:
 
-The project now includes a real Airflow orchestration layer:
+1. `ingest_and_load_raw`
+   Runs Python ingestion and loads the resulting S3 files into Snowflake.
+2. `dbt_run`
+   Builds dbt staging and mart models in Snowflake.
+3. `dbt_test`
+   Runs data quality checks on sources and marts.
 
-- [game_analytics_dag.py](E:/Codex/DE_project/dags/game_analytics_dag.py)
-- [airflow/docker-compose.yml](E:/Codex/DE_project/airflow/docker-compose.yml)
-- [airflow/Dockerfile](E:/Codex/DE_project/airflow/Dockerfile)
-- [airflow/dbt_profiles/profiles.yml](E:/Codex/DE_project/airflow/dbt_profiles/profiles.yml)
-- [airflow/README.md](E:/Codex/DE_project/airflow/README.md)
+Local Airflow support files:
 
-The DAG runs:
+- [docker-compose.yml](E:/Codex/DE_project/airflow/docker-compose.yml)
+- [Dockerfile](E:/Codex/DE_project/airflow/Dockerfile)
+- [profiles.yml](E:/Codex/DE_project/airflow/dbt_profiles/profiles.yml)
+- [airflow README](E:/Codex/DE_project/airflow/README.md)
 
-1. Python ingestion plus Snowflake raw load
-2. `dbt run`
-3. `dbt test`
+## Snowflake Authentication
 
-To start local Airflow:
+The project supports two Snowflake auth modes:
 
-```powershell
-docker compose -f airflow/docker-compose.yml up --build
-```
+- local MFA-based testing
+- key-pair authentication for automation and Airflow
 
-Then open `http://localhost:8080` and trigger the `game_market_analytics` DAG.
-
-## Snowflake automation auth
-
-For local testing, the project supports Snowflake MFA. For Airflow and unattended runs, key-pair authentication is the better option.
-
-The repo now supports Snowflake key-pair auth through:
+For unattended orchestration, the project uses Snowflake key-pair auth with:
 
 - `SNOWFLAKE_PRIVATE_KEY_PATH`
 - `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE`
@@ -142,11 +118,43 @@ Helper files:
 - [generate_snowflake_keypair.ps1](E:/Codex/DE_project/scripts/generate_snowflake_keypair.ps1)
 - [003_set_rsa_public_key.sql](E:/Codex/DE_project/snowflake/ddl/003_set_rsa_public_key.sql)
 
-After generating a key pair and assigning the public key to your Snowflake user, Airflow can connect without a fresh MFA code on every run.
+## Important Project Files
 
-## Environment variables
+Core pipeline:
 
-Create a local `.env` file with:
+- [run_pipeline.py](E:/Codex/DE_project/scripts/run_pipeline.py)
+- [load_to_snowflake.py](E:/Codex/DE_project/scripts/load_to_snowflake.py)
+- [pipeline.py](E:/Codex/DE_project/src/pipeline.py)
+- [snowflake_loader.py](E:/Codex/DE_project/src/snowflake_loader.py)
+
+Warehouse SQL:
+
+- [001_create_schemas.sql](E:/Codex/DE_project/snowflake/ddl/001_create_schemas.sql)
+- [002_create_raw_tables.sql](E:/Codex/DE_project/snowflake/ddl/002_create_raw_tables.sql)
+
+dbt:
+
+- [sources.yml](E:/Codex/DE_project/dbt/game_analytics/models/sources.yml)
+- [stg_rawg_games.sql](E:/Codex/DE_project/dbt/game_analytics/models/staging/stg_rawg_games.sql)
+- [stg_steam_featured_games.sql](E:/Codex/DE_project/dbt/game_analytics/models/staging/stg_steam_featured_games.sql)
+- [mart_games.sql](E:/Codex/DE_project/dbt/game_analytics/models/marts/mart_games.sql)
+- [marts_schema.yml](E:/Codex/DE_project/dbt/game_analytics/models/marts/marts_schema.yml)
+
+## Local Setup
+
+### 1. Python setup
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### 2. Environment variables
+
+Create a local `.env` file using [`.env.example`](E:/Codex/DE_project/.env.example).
+
+Main values:
 
 ```env
 RAWG_API_KEY=your_rawg_key
@@ -158,66 +166,55 @@ AWS_BUCKET_NAME=your_bucket_name
 AWS_RAW_PREFIX=raw
 SNOWFLAKE_ACCOUNT=your_account
 SNOWFLAKE_USER=your_user
-SNOWFLAKE_PASSWORD=your_password
-SNOWFLAKE_WAREHOUSE=your_warehouse
+SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 SNOWFLAKE_DATABASE=GAME_ANALYTICS
 SNOWFLAKE_SCHEMA=RAW
-SNOWFLAKE_ROLE=your_role
+SNOWFLAKE_ROLE=ACCOUNTADMIN
+SNOWFLAKE_PRIVATE_KEY_PATH=.keys/snowflake_rsa_key.p8
+SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=your_private_key_passphrase
 ```
 
-The app also accepts `AWS_DEFAULT_REGION`, `S3_BUCKET_NAME`, and `S3_RAW_PREFIX`.
+### 3. Run ingestion only
 
-## Snowflake raw load
+```powershell
+python scripts\run_pipeline.py
+```
 
-The project now includes a Snowflake raw-load layer that:
-
-- creates a Snowflake JSON file format
-- creates an external S3 stage for the raw bucket prefix
-- creates raw `VARIANT` tables for RAWG and Steam
-- copies the latest S3 raw files into Snowflake
-
-Run it with:
+### 4. Run ingestion plus Snowflake raw load
 
 ```powershell
 python scripts\load_to_snowflake.py
 ```
 
-Supporting files:
-
-- [src/snowflake_loader.py](E:/Codex/DE_project/src/snowflake_loader.py)
-- [scripts/load_to_snowflake.py](E:/Codex/DE_project/scripts/load_to_snowflake.py)
-- [001_create_schemas.sql](E:/Codex/DE_project/snowflake/ddl/001_create_schemas.sql)
-- [002_create_raw_tables.sql](E:/Codex/DE_project/snowflake/ddl/002_create_raw_tables.sql)
-
-## Local setup
+### 5. Run Airflow locally
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python scripts\run_pipeline.py
+docker compose -f airflow/docker-compose.yml up --build
 ```
 
-## Example S3 layout
+Then open [http://localhost:8080](http://localhost:8080)
+
+Default local login:
+
+- username: `admin`
+- password: `admin`
+
+## Example S3 Layout
 
 ```text
-raw/source=rawg/extract_date=2026-03-28/rawg_games_20260328T143000Z.json
-raw/source=steam/extract_date=2026-03-28/steam_apps_20260328T143000Z.json
+raw/source=rawg/extract_date=2026-03-28/rawg_games_20260328T171715Z.json
+raw/source=steam/extract_date=2026-03-28/steam_apps_20260328T171715Z.json
 ```
 
-## What to put on your resume
+## Resume Summary
 
-- Built an end-to-end ELT pipeline using Python, AWS S3, Snowflake, Airflow, and dbt
-- Automated ingestion of external gaming APIs into a cloud data lake and warehouse
-- Designed layered data models for analytics on releases, ratings, and platform coverage
-- Implemented reproducible transformations and orchestration for scheduled batch processing
-
-## GitHub
-
-If you have never used GitHub before, start with [github_guide.md](E:/Codex/DE_project/docs/github_guide.md).
+- Built an end-to-end ELT pipeline using Python, AWS S3, Snowflake, dbt, and Airflow
+- Automated ingestion of external game-market APIs into a cloud data lake and warehouse
+- Designed raw, staging, and mart layers for platform coverage, pricing, and rating analytics
+- Implemented automated orchestration and data tests for reproducible batch pipelines
 
 ## Notes
 
-- Keep secrets only in `.env`, never commit them.
-- Rotate any AWS keys that were exposed outside your local machine.
-- This repo is designed to become a public portfolio project once secrets are removed and setup steps are documented.
+- Secrets stay local in `.env` and are excluded from git.
+- The repository is structured to be portfolio-friendly and reproducible.
+- If you are new to GitHub, see [github_guide.md](E:/Codex/DE_project/docs/github_guide.md).
