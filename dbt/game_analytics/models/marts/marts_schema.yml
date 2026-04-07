@@ -20,3 +20,11 @@ models:
     columns:
       - name: rawg_game_id
         tests: [not_null, unique]
+
+  - name: mart_pipeline_load_summary
+    description: Aggregated operational summary of raw source file load attempts, successful loads, and skipped reruns.
+    columns:
+      - name: load_date
+        tests: [not_null]
+      - name: source
+        tests: [not_null]

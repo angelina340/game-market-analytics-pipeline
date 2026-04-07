@@ -46,6 +46,14 @@ Steam API --------/                                      |
 6. dbt builds marts for analytics-ready game-level reporting.
 7. Airflow orchestrates the pipeline: raw ingestion, Snowflake load, `dbt run`, and `dbt test`.
 
+The pipeline also supports controlled backfills and reruns through deterministic run context values:
+
+- `extracted_at_utc`
+- `extract_date`
+- `file_stamp`
+- `force_upload`
+- `force_reload`
+
 ## Data Layers
 
 ### Raw
@@ -87,12 +95,16 @@ The mart layer provides analytics-ready outputs:
 
 The Airflow DAG is defined in [game_analytics_dag.py](E:/Codex/DE_project/dags/game_analytics_dag.py) and runs:
 
-1. `ingest_and_load_raw`
-   Runs Python ingestion and loads the resulting S3 files into Snowflake.
-2. `dbt_run`
+1. `rawg_pipeline`
+   Extracts RAWG data and loads only the RAWG raw object into Snowflake.
+2. `steam_pipeline`
+   Extracts Steam data and loads only the Steam raw object into Snowflake.
+3. `dbt_run`
    Builds dbt staging and mart models in Snowflake.
-3. `dbt_test`
+4. `dbt_test`
    Runs data quality checks on sources and marts.
+
+The RAWG and Steam task groups run independently and can retry separately, which improves fault isolation and reduces unnecessary reruns.
 
 Local Airflow support files:
 
@@ -186,6 +198,18 @@ python scripts\run_pipeline.py
 python scripts\load_to_snowflake.py
 ```
 
+Backfill or rerun a specific logical extract:
+
+```powershell
+python scripts\load_to_snowflake.py --extracted-at-utc 2026-04-01T09:00:00Z --extract-date 2026-04-01 --file-stamp 20260401T090000Z
+```
+
+Force overwrite the S3 object and force Snowflake reload for the same logical run:
+
+```powershell
+python scripts\load_to_snowflake.py --extracted-at-utc 2026-04-01T09:00:00Z --extract-date 2026-04-01 --file-stamp 20260401T090000Z --force-upload --force-reload
+```
+
 ### 5. Run Airflow locally
 
 ```powershell
@@ -198,6 +222,18 @@ Default local login:
 
 - username: `admin`
 - password: `admin`
+
+To trigger a backfill in Airflow, open the DAG trigger form and pass values like:
+
+```json
+{
+  "extract_date": "2026-04-01",
+  "extracted_at_utc": "2026-04-01T09:00:00Z",
+  "file_stamp": "20260401T090000Z",
+  "force_upload": false,
+  "force_reload": false
+}
+```
 
 ## Example S3 Layout
 

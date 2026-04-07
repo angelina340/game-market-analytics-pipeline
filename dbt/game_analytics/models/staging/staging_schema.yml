@@ -30,3 +30,13 @@ models:
     columns:
       - name: category_name
         tests: [not_null]
+
+  - name: stg_raw_load_audit
+    description: Audit history of source file loads into Snowflake raw tables.
+    columns:
+      - name: source
+        tests: [not_null]
+      - name: s3_key
+        tests: [not_null]
+      - name: status
+        tests: [not_null]

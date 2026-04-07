@@ -1,3 +1,9 @@
+{{ config(
+    materialized='incremental',
+    unique_key='rawg_game_id',
+    incremental_strategy='merge'
+) }}
+
 with rawg_games as (
     select *
     from {{ ref('stg_rawg_games') }}

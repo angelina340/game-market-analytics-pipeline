@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import boto3
+from botocore.exceptions import ClientError
 
 
 class S3RawWriter:
@@ -30,6 +31,16 @@ class S3RawWriter:
             Body=body,
             ContentType="application/json",
         )
+
+    def object_exists(self, s3_key: str) -> bool:
+        try:
+            self.client.head_object(Bucket=self.bucket_name, Key=s3_key)
+            return True
+        except ClientError as exc:
+            error_code = exc.response.get("Error", {}).get("Code")
+            if error_code in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise
 
 
 def write_local_json(payload: dict, filepath: Path) -> None:

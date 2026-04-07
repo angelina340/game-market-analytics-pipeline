@@ -1,0 +1,7 @@
+{
+  "terminal.integrated.env.windows": {
+    "HTTP_PROXY": null,
+    "HTTPS_PROXY": null,
+    "ALL_PROXY": null
+  }
+}

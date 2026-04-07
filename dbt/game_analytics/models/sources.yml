@@ -7,5 +7,15 @@ sources:
     tables:
       - name: RAWG_GAMES_RAW
         description: Raw JSON envelopes loaded from the RAWG API into Snowflake.
+        loaded_at_field: extracted_at
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 7, period: day}
       - name: STEAM_GAMES_RAW
         description: Raw JSON envelopes loaded from Steam into Snowflake.
+        loaded_at_field: extracted_at
+        freshness:
+          warn_after: {count: 2, period: day}
+          error_after: {count: 7, period: day}
+      - name: RAW_LOAD_AUDIT
+        description: Audit table that records whether each source file was loaded or skipped.

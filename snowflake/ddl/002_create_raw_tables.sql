@@ -18,6 +18,15 @@ create table if not exists GAME_ANALYTICS.RAW.STEAM_GAMES_RAW (
     loaded_at timestamp_ntz default current_timestamp()
 );
 
+create table if not exists GAME_ANALYTICS.RAW.RAW_LOAD_AUDIT (
+    source varchar,
+    s3_key varchar,
+    target_table varchar,
+    rows_loaded number,
+    status varchar,
+    loaded_at timestamp_ntz default current_timestamp()
+);
+
 -- Replace the placeholder credentials before running manually in Snowflake.
 create or replace stage GAME_ANALYTICS.RAW.GAME_ANALYTICS_RAW_STAGE
 url = 's3://YOUR_BUCKET_NAME/raw/'

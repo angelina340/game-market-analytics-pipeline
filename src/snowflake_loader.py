@@ -10,6 +10,7 @@ from src.config import Settings, SnowflakeSettings
 
 @dataclass(frozen=True)
 class SnowflakeLoadResult:
+    source: str
     rawg_stage_path: str
     steam_stage_path: str
     rawg_rows_loaded: int
@@ -47,33 +48,62 @@ class SnowflakeRawLoader:
             **connect_kwargs,
         )
 
-    def load_s3_raw_files(self, rawg_s3_key: str, steam_s3_key: str) -> SnowflakeLoadResult:
+    def load_s3_raw_files(
+        self,
+        rawg_s3_key: str,
+        steam_s3_key: str,
+        force_reload: bool = False,
+    ) -> SnowflakeLoadResult:
         rawg_stage_path = f"s3://{self.app_settings.s3_bucket_name}/{rawg_s3_key}"
         steam_stage_path = f"s3://{self.app_settings.s3_bucket_name}/{steam_s3_key}"
 
         with self._connect() as connection:
             with connection.cursor() as cursor:
                 self._initialize_objects(cursor)
-                rawg_rows_loaded = self._copy_json_file(
+                rawg_rows_loaded = self.load_source_file(
                     cursor=cursor,
-                    table_name="RAWG_GAMES_RAW",
-                    stage_name="GAME_ANALYTICS_RAW_STAGE",
-                    s3_key=rawg_s3_key,
                     source_name="rawg",
+                    s3_key=rawg_s3_key,
+                    force_reload=force_reload,
                 )
-                steam_rows_loaded = self._copy_json_file(
+                steam_rows_loaded = self.load_source_file(
                     cursor=cursor,
-                    table_name="STEAM_GAMES_RAW",
-                    stage_name="GAME_ANALYTICS_RAW_STAGE",
-                    s3_key=steam_s3_key,
                     source_name="steam",
+                    s3_key=steam_s3_key,
+                    force_reload=force_reload,
                 )
 
         return SnowflakeLoadResult(
+            source="all",
             rawg_stage_path=rawg_stage_path,
             steam_stage_path=steam_stage_path,
             rawg_rows_loaded=rawg_rows_loaded,
             steam_rows_loaded=steam_rows_loaded,
+        )
+
+    def load_single_source_file(
+        self,
+        source_name: str,
+        s3_key: str,
+        force_reload: bool = False,
+    ) -> SnowflakeLoadResult:
+        stage_path = f"s3://{self.app_settings.s3_bucket_name}/{s3_key}"
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                self._initialize_objects(cursor)
+                rows_loaded = self.load_source_file(
+                    cursor=cursor,
+                    source_name=source_name,
+                    s3_key=s3_key,
+                    force_reload=force_reload,
+                )
+
+        return SnowflakeLoadResult(
+            source=source_name,
+            rawg_stage_path=stage_path if source_name == "rawg" else "",
+            steam_stage_path=stage_path if source_name == "steam" else "",
+            rawg_rows_loaded=rows_loaded if source_name == "rawg" else 0,
+            steam_rows_loaded=rows_loaded if source_name == "steam" else 0,
         )
 
     def _initialize_objects(self, cursor) -> None:
@@ -115,19 +145,44 @@ class SnowflakeRawLoader:
                 loaded_at timestamp_ntz default current_timestamp()
             )
             """,
+            """
+            create table if not exists RAW_LOAD_AUDIT (
+                source varchar,
+                s3_key varchar,
+                target_table varchar,
+                rows_loaded number,
+                status varchar,
+                loaded_at timestamp_ntz default current_timestamp()
+            )
+            """,
         ]
 
         for statement in statements:
             cursor.execute(statement)
 
-    def _copy_json_file(
+    def load_source_file(
         self,
         cursor,
-        table_name: str,
-        stage_name: str,
-        s3_key: str,
         source_name: str,
+        s3_key: str,
+        force_reload: bool = False,
     ) -> int:
+        table_name = "RAWG_GAMES_RAW" if source_name == "rawg" else "STEAM_GAMES_RAW"
+        stage_name = "GAME_ANALYTICS_RAW_STAGE"
+        if (
+            self._already_loaded(cursor, source_name=source_name, s3_key=s3_key, target_table=table_name)
+            and not force_reload
+        ):
+            self._record_load_audit(
+                cursor=cursor,
+                source_name=source_name,
+                s3_key=s3_key,
+                target_table=table_name,
+                rows_loaded=0,
+                status="skipped_existing",
+            )
+            return 0
+
         relative_key = s3_key.removeprefix(f"{self.app_settings.s3_raw_prefix}/")
         copy_statement = f"""
         copy into {table_name} (source, s3_key, extracted_at, payload)
@@ -149,4 +204,43 @@ class SnowflakeRawLoader:
         for row in rows:
             if len(row) >= 4 and isinstance(row[3], int):
                 rows_loaded += row[3]
+
+        self._record_load_audit(
+            cursor=cursor,
+            source_name=source_name,
+            s3_key=s3_key,
+            target_table=table_name,
+            rows_loaded=rows_loaded,
+            status="reloaded" if force_reload else "loaded",
+        )
         return rows_loaded
+
+    def _already_loaded(self, cursor, source_name: str, s3_key: str, target_table: str) -> bool:
+        cursor.execute(
+            f"""
+            select count(*)
+            from RAW_LOAD_AUDIT
+            where source = '{source_name}'
+              and s3_key = '{s3_key}'
+              and target_table = '{target_table}'
+              and status = 'loaded'
+            """
+        )
+        row = cursor.fetchone()
+        return bool(row and row[0] > 0)
+
+    def _record_load_audit(
+        self,
+        cursor,
+        source_name: str,
+        s3_key: str,
+        target_table: str,
+        rows_loaded: int,
+        status: str,
+    ) -> None:
+        cursor.execute(
+            f"""
+            insert into RAW_LOAD_AUDIT (source, s3_key, target_table, rows_loaded, status)
+            values ('{source_name}', '{s3_key}', '{target_table}', {rows_loaded}, '{status}')
+            """
+        )
